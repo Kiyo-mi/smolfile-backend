@@ -2,3 +2,5 @@ Flask
 playwright
 requests
 ffmpeg-python
+flask_cors
+yt-dlp
