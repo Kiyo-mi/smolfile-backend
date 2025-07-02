@@ -1,4 +1,4 @@
-flask
-yt-dlp
+Flask
+playwright
+requests
 ffmpeg-python
-flask-cors

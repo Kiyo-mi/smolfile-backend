@@ -17,10 +17,15 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # Set our file size goal: 10MB
 TARGET_SIZE_MB = 10
 TARGET_SIZE_BYTES = TARGET_SIZE_MB * 1024 * 1024
-
+import requests
 # STEP 1: Download the video from the given URL
 def download_video(url, output_path):
+    with requests.get(url, stream=True) as r:
+        with open(output_path, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
     ydl_opts = {
+        
         'format': 'best[ext=mp4]',
 'nocheckcertificate': True,
 'geo_bypass': True,
@@ -58,28 +63,49 @@ def compress():
     video_url = request.form.get('url')
     if not video_url:
         return {'error': 'No URL provided'}, 400
- # 🚫 Block YouTube links for now
+
+    # BLOCK YouTube until later
     if "youtube.com" in video_url or "youtu.be" in video_url:
-        return {
-            'error': 'YouTube is currently unsupported. Try Instagram, Twitter, or Reddit instead.'
-        }, 400
-    # Generate unique filename
-    uid = str(uuid.uuid4())
-    raw_path = f"{uid}_raw.mp4"
-    raw_full = os.path.join(OUTPUT_DIR, raw_path)
-    compressed_path = f"{uid}_smol.mp4"
-    compressed_full = os.path.join(OUTPUT_DIR, compressed_path)
+        return {'error': 'YouTube is unsupported for now'}, 400
 
     try:
-        # Download and compress
-        download_video(video_url, raw_full)
-        compress_video(raw_full, compressed_full)
-        os.remove(raw_full)  # Clean up original file
+        # Step 1: Get real mp4 URL
+        direct_url = get_direct_video_url(video_url)
+        if not direct_url:
+            return {'error': 'Unable to extract video'}, 400
 
-        # Send compressed video back to user
+        # Step 2: Download & compress the video
+        uid = str(uuid.uuid4())
+        raw_path = f"{uid}_raw.mp4"
+        raw_full = os.path.join(OUTPUT_DIR, raw_path)
+        compressed_path = f"{uid}_smol.mp4"
+        compressed_full = os.path.join(OUTPUT_DIR, compressed_path)
+
+        # Download the actual file
+        download_video(direct_url, raw_full)
+        compress_video(raw_full, compressed_full)
+        os.remove(raw_full)
+
         return send_file(compressed_full, as_attachment=True)
     except Exception as e:
         return {'error': str(e)}, 500
+
+from playwright.sync_api import sync_playwright
+
+def get_direct_video_url(page_url):
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto(page_url, timeout=60000)
+
+        # Wait for video to load (adjust as needed)
+        page.wait_for_timeout(3000)
+
+        # Try grabbing video tag src
+        video_src = page.eval_on_selector("video", "el => el.src")
+
+        browser.close()
+        return video_src
 
 # Run the app locally
 if __name__ == '__main__':
