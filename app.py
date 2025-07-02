@@ -21,7 +21,14 @@ TARGET_SIZE_BYTES = TARGET_SIZE_MB * 1024 * 1024
 # STEP 1: Download the video from the given URL
 def download_video(url, output_path):
     ydl_opts = {
-        'format': 'best[ext=mp4]',  # Choose best quality MP4
+        'format': 'best[ext=mp4]',
+'nocheckcertificate': True,
+'geo_bypass': True,
+'quiet': True,
+'restrictfilenames': True,
+'noplaylist': True,
+'force_generic_extractor': True  # Helps with non-YouTube URLs
+,  # Choose best quality MP4
         'outtmpl': output_path,     # Save to this path
         'quiet': True               # Don’t print too much info
     }
@@ -51,7 +58,11 @@ def compress():
     video_url = request.form.get('url')
     if not video_url:
         return {'error': 'No URL provided'}, 400
-
+ # 🚫 Block YouTube links for now
+    if "youtube.com" in video_url or "youtu.be" in video_url:
+        return {
+            'error': 'YouTube is currently unsupported. Try Instagram, Twitter, or Reddit instead.'
+        }, 400
     # Generate unique filename
     uid = str(uuid.uuid4())
     raw_path = f"{uid}_raw.mp4"
