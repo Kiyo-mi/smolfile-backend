@@ -1,26 +1,30 @@
-# Use Playwright’s Ubuntu+Python3 image (includes playwright CLI)
+### Dockerfile for Smolfile-backend
+```dockerfile
+# Use Playwright's official image which includes Node, Python, and necessary libs
 FROM mcr.microsoft.com/playwright:focal
 
-WORKDIR /app
-
-# Install FFmpeg system binary
-RUN apt-get update && apt-get install -y ffmpeg
-
-# Copy your application code
-COPY . .
-
-# Install Python dependencies and Playwright browsers
-RUN python3 -m venv /opt/venv \
-    && . /opt/venv/bin/activate \
-    && pip install --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt \
-    && python3 -m playwright install
-
-# Make sure the venv’s pip/python are used
+# Create a virtual environment and set it in PATH
+RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Expose the port your Flask app runs on
+# Install system ffmpeg
+RUN apt-get update && apt-get install -y ffmpeg
+
+# Set working directory
+WORKDIR /app
+
+# Copy application code
+COPY . .
+
+# Upgrade pip and install Python dependencies
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# Install Playwright browsers
+RUN python3 -m playwright install --with-deps
+
+# Expose Flask port
 EXPOSE 5000
 
-# Start your app
+# Start the Flask app
 CMD ["python3", "app.py"]
