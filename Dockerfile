@@ -1,21 +1,26 @@
-# Use an official Python runtime with Playwright support
+# Use Playwright’s Ubuntu+Python3 image (includes playwright CLI)
 FROM mcr.microsoft.com/playwright:focal
 
-# Create working directory
 WORKDIR /app
 
-# Install system FFmpeg
+# Install FFmpeg system binary
 RUN apt-get update && apt-get install -y ffmpeg
 
-# Copy your backend code
+# Copy your application code
 COPY . .
 
 # Install Python dependencies and Playwright browsers
-RUN pip install --no-cache-dir -r requirements.txt \
-    && python -m playwright install
+RUN python3 -m venv /opt/venv \
+    && . /opt/venv/bin/activate \
+    && pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt \
+    && python3 -m playwright install
 
-# Expose the port Flask listens on
+# Make sure the venv’s pip/python are used
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Expose the port your Flask app runs on
 EXPOSE 5000
 
-# Tell Docker to run your app
-CMD ["python", "app.py"]
+# Start your app
+CMD ["python3", "app.py"]
