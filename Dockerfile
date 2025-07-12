@@ -12,7 +12,7 @@ COPY . .
 
 # Install Python dependencies and Playwright browsers
 RUN pip install --no-cache-dir -r requirements.txt \
-    && playwright install
+    && python -m playwright install
 
 # Expose the port Flask listens on
 EXPOSE 5000
