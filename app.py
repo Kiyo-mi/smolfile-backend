@@ -10,7 +10,7 @@ from playwright.sync_api import sync_playwright
 
 # Initialize Flask
 app = Flask(__name__)
-CORS(app, resources = {r"/compress": {"origins":"https://www.smolfile.com"}})
+CORS(app, resources={ r"/*": {"origins": "*"} })
 
 # Directory to store videos
 OUTPUT_DIR = "compressed_videos"
