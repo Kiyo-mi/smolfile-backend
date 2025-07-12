@@ -1,6 +1,6 @@
-Flask
-playwright
-requests
-ffmpeg-python
-flask_cors
+flask
+flask-cors
 yt-dlp
+ffmpeg-python
+requests
+playwright

@@ -4,112 +4,107 @@ import yt_dlp
 import ffmpeg
 import os
 import uuid
+import requests
+from urllib.parse import urlparse
+from playwright.sync_api import sync_playwright
 
-# This starts your web app
+# Initialize Flask
 app = Flask(__name__)
 CORS(app)
 
-
-# Where we’ll save the downloaded + compressed videos
+# Directory to store videos
 OUTPUT_DIR = "compressed_videos"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Set our file size goal: 10MB
+# Target size: 10MB
 TARGET_SIZE_MB = 10
 TARGET_SIZE_BYTES = TARGET_SIZE_MB * 1024 * 1024
-import requests
-# STEP 1: Download the video from the given URL
-def download_video(url, output_path):
-    with requests.get(url, stream=True) as r:
-        with open(output_path, 'wb') as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
-    ydl_opts = {
-        
-        'format': 'best[ext=mp4]',
-'nocheckcertificate': True,
-'geo_bypass': True,
-'quiet': True,
-'restrictfilenames': True,
-'noplaylist': True,
-'force_generic_extractor': True  # Helps with non-YouTube URLs
-,  # Choose best quality MP4
-        'outtmpl': output_path,     # Save to this path
-        'quiet': True               # Don’t print too much info
-    }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])         # Download the video
 
-# STEP 2: Compress the video using FFmpeg
-def compress_video(input_path, output_path):
-    probe = ffmpeg.probe(input_path)
-    duration = float(probe['format']['duration'])  # Get video length in seconds
 
-    # Calculate bitrate needed to fit under 10MB
-    bitrate = (TARGET_SIZE_BYTES * 8) / duration
-    bitrate_k = int(bitrate / 1000)  # Convert to kilobits per second
-
-    # Compress with target bitrate
-    (
-        ffmpeg
-        .input(input_path)
-        .output(output_path, video_bitrate=f'{bitrate_k}k', format='mp4', vcodec='libx264', acodec='aac')
-        .run(overwrite_output=True)
-    )
-
-# STEP 3: Main route to handle video compression
-@app.route('/compress', methods=['POST'])
-def compress():
-    video_url = request.form.get('url')
-    if not video_url:
-        return {'error': 'No URL provided'}, 400
-
-    # BLOCK YouTube until later
-    if "youtube.com" in video_url or "youtu.be" in video_url:
-        return {'error': 'YouTube is unsupported for now'}, 400
-
-    try:
-        # Step 1: Get real mp4 URL
-        direct_url = get_direct_video_url(video_url)
-        if not direct_url:
-            return {'error': 'Unable to extract video'}, 400
-
-        # Step 2: Download & compress the video
-        uid = str(uuid.uuid4())
-        raw_path = f"{uid}_raw.mp4"
-        raw_full = os.path.join(OUTPUT_DIR, raw_path)
-        compressed_path = f"{uid}_smol.mp4"
-        compressed_full = os.path.join(OUTPUT_DIR, compressed_path)
-
-        # Download the actual file
-        download_video(direct_url, raw_full)
-        compress_video(raw_full, compressed_full)
-        os.remove(raw_full)
-
-        return send_file(compressed_full, as_attachment=True)
-    except Exception as e:
-        return {'error': str(e)}, 500
-
-from playwright.sync_api import sync_playwright
-
-def get_direct_video_url(page_url):
+def extract_video_src_with_playwright(page_url):
+    """
+    Use Playwright to navigate to the page and extract the <video> tag's src.
+    """
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         page.goto(page_url, timeout=60000)
-
-        # Wait for video to load (adjust as needed)
-        page.wait_for_timeout(3000)
-
-        # Try grabbing video tag src
-        video_src = page.eval_on_selector("video", "el => el.src")
-
+        page.wait_for_selector('video', timeout=15000)
+        src = page.eval_on_selector('video', 'el => el.src')
         browser.close()
-        return video_src
+        return src
 
-# Run the app locally
+
+def download_video(url, output_path):
+    """
+    Download a video to output_path. Uses Playwright for YouTube; yt_dlp for others.
+    """
+    domain = urlparse(url).netloc.lower()
+    # For YouTube (and domains that block non-browser clients), use Playwright
+    if 'youtube.com' in domain or 'youtu.be' in domain:
+        video_src = extract_video_src_with_playwright(url)
+        # Stream download via requests
+        with requests.get(video_src, stream=True) as r:
+            r.raise_for_status()
+            with open(output_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+    else:
+        # Use yt_dlp for other platforms (Instagram, Twitter, Reddit, etc.)
+        ydl_opts = {
+            'format': 'best[ext=mp4]',
+            'nocheckcertificate': True,
+            'geo_bypass': True,
+            'quiet': True,
+            'restrictfilenames': True,
+            'noplaylist': True,
+            'outtmpl': output_path
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+
+def compress_video(input_path, output_path):
+    """
+    Compress input_path to output_path targeting under 10MB.
+    """
+    probe = ffmpeg.probe(input_path)
+    duration = float(probe['format']['duration'])
+    bitrate = (TARGET_SIZE_BYTES * 8) / duration
+    bitrate_k = int(bitrate / 1000)
+    (
+        ffmpeg
+        .input(input_path)
+        .output(output_path,
+                video_bitrate=f'{bitrate_k}k',
+                format='mp4',
+                vcodec='libx264',
+                acodec='aac')
+        .run(overwrite_output=True)
+    )
+
+@app.route('/compress', methods=['POST'])
+def compress():
+    url = request.form.get('url')
+    if not url:
+        return {'error': 'No URL provided'}, 400
+
+    try:
+        uid = str(uuid.uuid4())
+        raw = os.path.join(OUTPUT_DIR, f"{uid}_raw.mp4")
+        small = os.path.join(OUTPUT_DIR, f"{uid}_smol.mp4")
+
+        download_video(url, raw)
+        compress_video(raw, small)
+        os.remove(raw)
+
+        return send_file(small, as_attachment=True)
+    except Exception as e:
+        # Log error for debugging
+        print(f"Error during compression: {e}")
+        return {'error': str(e)}, 500
+
 if __name__ == '__main__':
-   import os
-port = int(os.environ.get("PORT", 5000))
-app.run(host="0.0.0.0", port=port)
-
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
