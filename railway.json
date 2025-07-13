@@ -1,5 +1,4 @@
 {
-  "scripts": {
-    "start": "python3 app.py"
-  }
+  "buildCommand": "pip install --no-cache-dir -r requirements.txt && python3 -m playwright install-deps && python3 -m playwright install",
+  "startCommand": "python3 app.py"
 }
