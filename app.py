@@ -28,58 +28,24 @@ BROWSER_DOMAINS = (
     'twitter.com', 'x.com'
 )
 
-def extract_video_src_with_playwright(page_url):
-    """
-    Use a mobile UA so Instagram/Twitter/Reels render a simple <video> tag.
-    Returns the video src URL or None if not found.
-    """
-    mobile_ua = (
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) "
-      "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 "
-      "Mobile/15A372 Safari/604.1"
-    )
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page(user_agent=mobile_ua)
-        page.goto(page_url, timeout=60000)
-        try:
-            # wait for any <video src> element
-            page.wait_for_selector("video[src]", timeout=15000)
-            src = page.eval_on_selector("video", "el => el.src")
-            print(f"[browser] extracted src via playwright: {src}")
-            browser.close()
-            return src or None
-        except PlaywrightTimeoutError:
-            print("[browser] timeout waiting for video[src]")
-        except Exception as e:
-            print(f"[browser] error extracting video[src]: {e}")
-        finally:
-            browser.close()
-        return None
-
 
 def download_video(url, output_path):
     """
-    First try Playwright/Mobile-UA extraction; if that fails, fallback to yt-dlp.
+    Download the video at `url` directly via yt-dlp into output_path.
     """
-    domain = urlparse(url).netloc.lower()
-    print(f"[download_video] domain: {domain}")
-
-    # 1) Playwright path for “hard” domains
-    if any(d in domain for d in BROWSER_DOMAINS):
-        print(f"[browser] playwright extracting for {url}")
-        video_src = extract_video_src_with_playwright(url)
-        if video_src:
-            print(f"[browser] got src: {video_src}")
-            # stream into file
-            with requests.get(video_src, stream=True) as r:
-                r.raise_for_status()
-                with open(output_path, "wb") as f:
-                    for chunk in r.iter_content(8192):
-                        f.write(chunk)
-            print(f"[browser] saved to {output_path}")
-            return
-        print(f"[browser] no src, falling back to yt-dlp")
+    print(f"[yt-dlp] downloading {url} to {output_path}")
+    ydl_opts = {
+        "format": "best[ext=mp4]",
+        "outtmpl": output_path,
+        "quiet": True,
+        "nocheckcertificate": True,
+        "geo_bypass": True,
+        "restrictfilenames": True,
+        "noplaylist": True,
+    }
+    with YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+    print(f"[yt-dlp] saved to {output_path}")
 
     # 2) Fallback: yt-dlp
     print(f"[yt-dlp] downloading via yt-dlp for {url}")
