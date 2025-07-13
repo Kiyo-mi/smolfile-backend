@@ -25,10 +25,8 @@ TARGET_SIZE_BYTES = TARGET_SIZE_MB * 1024 * 1024
 # Domains that need headless browser extraction
 BROWSER_DOMAINS = (
     'youtube.com', 'youtu.be',
-    'instagram.com', 'www.instagram.com',
     'twitter.com', 'x.com'
 )
-
 
 def extract_video_src_with_playwright(page_url):
     """
