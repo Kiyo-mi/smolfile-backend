@@ -98,19 +98,28 @@ def compress():
     small = os.path.join(OUTPUT_DIR, f"{uid}_smol.mp4")
 
     try:
-        # If download_video can’t find a src, it raises ValueError
         download_video(url, raw)
-        compress_video(raw, small)
-        os.remove(raw)
-        return send_file(small, as_attachment=True)
-
     except ValueError as ve:
-        # Handle our “no video found” case gracefully
         return {'error': str(ve)}, 400
 
+    try:
+        compress_video(raw, small)
+    except FileNotFoundError as fnf:
+        # Likely ffprobe is missing
+        return {
+            'error': 'Server misconfiguration: ffmpeg/ffprobe not found on the host.'
+        }, 500
     except Exception as e:
-        # Everything else stays a 500
-        return {'error': 'Internal server error'}, 500
+        # print the real stack to the logs
+        import traceback
+        traceback.print_exc()
+        return {'error': 'Compression failed due to an internal error.'}, 500
+    finally:
+        # clean up raw file if it exists
+        if os.path.exists(raw):
+            os.remove(raw)
+
+    return send_file(small, as_attachment=True)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
