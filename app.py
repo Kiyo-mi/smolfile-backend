@@ -118,24 +118,27 @@ def compress_video(input_path, output_path):
 @app.route('/compress', methods=['POST'])
 def compress():
     url = request.form.get('url')
-    print(f"[compress] request received for URL: {url}")
     if not url:
         return {'error': 'No URL provided'}, 400
 
-    try:
-        uid = str(uuid.uuid4())
-        raw = os.path.join(OUTPUT_DIR, f"{uid}_raw.mp4")
-        small = os.path.join(OUTPUT_DIR, f"{uid}_smol.mp4")
+    uid = str(uuid.uuid4())
+    raw = os.path.join(OUTPUT_DIR, f"{uid}_raw.mp4")
+    small = os.path.join(OUTPUT_DIR, f"{uid}_smol.mp4")
 
+    try:
+        # If download_video can’t find a src, it raises ValueError
         download_video(url, raw)
         compress_video(raw, small)
         os.remove(raw)
-
-        print(f"[compress] sending file: {small}")
         return send_file(small, as_attachment=True)
+
+    except ValueError as ve:
+        # Handle our “no video found” case gracefully
+        return {'error': str(ve)}, 400
+
     except Exception as e:
-        import traceback; traceback.print_exc()
-        return {'error': str(e)}, 500
+        # Everything else stays a 500
+        return {'error': 'Internal server error'}, 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
