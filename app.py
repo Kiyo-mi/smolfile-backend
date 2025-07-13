@@ -51,10 +51,11 @@ def download_video(url, output_path):
     domain = urlparse(url).netloc.lower()
     print(f"[download_video] domain detected: {domain}")
 
-    # If URL matches a domain that blocks generic extractors, use headless browser
-    if any(d in domain for d in BROWSER_DOMAINS):
-        print(f"[browser] extracting video src for {url}")
-        video_src = extract_video_src_with_playwright(url)
+    video_src = extract_video_src_with_playwright(url)
+    if not video_src:
+        # no video found—return a 400 so frontend can show a friendly error
+        raise ValueError(f"No video src found at {url}")
+    # otherwise proceed with requests.get(video_src, …)
         try:
             with requests.get(video_src, stream=True) as r:
                 r.raise_for_status()
