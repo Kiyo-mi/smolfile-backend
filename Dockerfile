@@ -1,18 +1,18 @@
-# Use Playwright’s official image which bundles all browser dependencies
+# Use Playwright’s official image (includes browsers + Python 3)
 FROM mcr.microsoft.com/playwright:focal
 
-# Set working directory
 WORKDIR /app
 
-# Copy and install Python dependencies
+# Copy and install Python dependencies using python3 -m pip
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python3 -m pip install --upgrade pip \
+ && python3 -m pip install --no-cache-dir -r requirements.txt
 
-# Copy your application code
+# Copy the rest of your app
 COPY . .
 
-# Expose the PORT (Railway sets this env var automatically)
+# Expose the port Railway will bind
 ENV PORT=5000
 
-# Launch your Flask app
+# Start your Flask app
 CMD ["python3", "app.py"]
