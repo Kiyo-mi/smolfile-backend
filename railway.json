@@ -1,5 +1,5 @@
 {
   "scripts": {
-    "build": "pip install -r requirements.txt && python3 -m playwright install-deps && python3 -m playwright install"
+    "start": "python3 app.py"
   }
 }
