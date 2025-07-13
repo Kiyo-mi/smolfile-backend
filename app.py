@@ -8,6 +8,7 @@ import requests
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 from yt_dlp import YoutubeDL
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 # Initialize Flask
 app = Flask(__name__)
@@ -32,6 +33,7 @@ BROWSER_DOMAINS = (
 def extract_video_src_with_playwright(page_url):
     """
     Use a mobile UA so Instagram/Twitter/Reels render a simple <video> tag.
+    Returns the video src URL or None if not found.
     """
     mobile_ua = (
       "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) "
@@ -42,11 +44,20 @@ def extract_video_src_with_playwright(page_url):
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(user_agent=mobile_ua)
         page.goto(page_url, timeout=60000)
-        # wait for a video[src] to appear
-        page.wait_for_selector("video[src]", timeout=15000)
-        src = page.eval_on_selector("video", "el => el.src")
-        browser.close()
-        return src or None
+        try:
+            # wait for any <video src> element
+            page.wait_for_selector("video[src]", timeout=15000)
+            src = page.eval_on_selector("video", "el => el.src")
+            print(f"[browser] extracted src via playwright: {src}")
+            browser.close()
+            return src or None
+        except PlaywrightTimeoutError:
+            print("[browser] timeout waiting for video[src]")
+        except Exception as e:
+            print(f"[browser] error extracting video[src]: {e}")
+        finally:
+            browser.close()
+        return None
 
 
 def download_video(url, output_path):
