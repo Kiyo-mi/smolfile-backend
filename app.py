@@ -7,6 +7,7 @@ import uuid
 import requests
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from yt_dlp import YoutubeDL
 
 # Initialize Flask
 app = Flask(__name__)
@@ -29,66 +30,62 @@ BROWSER_DOMAINS = (
 
 
 def extract_video_src_with_playwright(page_url):
+    """
+    Use a mobile UA so Instagram/Twitter/Reels render a simple <video> tag.
+    """
+    mobile_ua = (
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) "
+      "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 "
+      "Mobile/15A372 Safari/604.1"
+    )
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        page = browser.new_page(user_agent=mobile_ua)
         page.goto(page_url, timeout=60000)
-
-        # ← Insert your wait here:
+        # wait for a video[src] to appear
         page.wait_for_selector("video[src]", timeout=15000)
-
-        # Now that the video element is present, grab its src
-        video_src = page.eval_on_selector("video", "el => el.src")
-
+        src = page.eval_on_selector("video", "el => el.src")
         browser.close()
-        return video_src
+        return src or None
 
 
 def download_video(url, output_path):
     """
-    Download a video to output_path. Uses Playwright for certain domains; yt_dlp for others.
+    First try Playwright/Mobile-UA extraction; if that fails, fallback to yt-dlp.
     """
     domain = urlparse(url).netloc.lower()
-    print(f"[download_video] domain detected: {domain}")
+    print(f"[download_video] domain: {domain}")
 
-    video_src = extract_video_src_with_playwright(url)
-    if not video_src:
-        # no video found—return a 400 so frontend can show a friendly error
-        raise ValueError(f"No video src found at {url}")
-    # otherwise proceed with requests.get(video_src, …)
-        try:
+    # 1) Playwright path for “hard” domains
+    if any(d in domain for d in BROWSER_DOMAINS):
+        print(f"[browser] playwright extracting for {url}")
+        video_src = extract_video_src_with_playwright(url)
+        if video_src:
+            print(f"[browser] got src: {video_src}")
+            # stream into file
             with requests.get(video_src, stream=True) as r:
                 r.raise_for_status()
-                print(f"[browser download] streaming from: {video_src}")
-                with open(output_path, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-            print(f"[browser download] saved to {output_path}")
+                with open(output_path, "wb") as f:
+                    for chunk in r.iter_content(8192):
+                        f.write(chunk)
+            print(f"[browser] saved to {output_path}")
             return
-        except Exception as e:
-            print(f"[browser download] failed for {url}: {e}")
-            raise
+        print(f"[browser] no src, falling back to yt-dlp")
 
-    # Fallback to yt-dlp for other platforms (Reddit, generic links)
+    # 2) Fallback: yt-dlp
     print(f"[yt-dlp] downloading via yt-dlp for {url}")
     ydl_opts = {
-        'format': 'best[ext=mp4]',
-        'force_generic_extractor': True,
-        'nocheckcertificate': True,
-        'geo_bypass': True,
-        'quiet': True,
-        'restrictfilenames': True,
-        'noplaylist': True,
-        'outtmpl': output_path
+        "format": "best[ext=mp4]",
+        "outtmpl": output_path,
+        "quiet": True,
+        "nocheckcertificate": True,
+        "geo_bypass": True,
+        "restrictfilenames": True,
+        "noplaylist": True,
     }
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-        print(f"[yt-dlp] saved to {output_path}")
-    except Exception as e:
-        print(f"[yt-dlp] failed for {url}: {e}")
-        raise
+    with YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+    print(f"[yt-dlp] saved to {output_path}")
 
 
 def compress_video(input_path, output_path):
