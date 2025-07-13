@@ -29,19 +29,19 @@ BROWSER_DOMAINS = (
 
 
 def extract_video_src_with_playwright(page_url):
-    """
-    Use Playwright to navigate to a page and extract the <video> tag's src attribute.
-    """
-    print(f"[playwright] launching browser for: {page_url}")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         page.goto(page_url, timeout=60000)
-        page.wait_for_selector('video', timeout=15000)
-        src = page.eval_on_selector('video', 'el => el.src')
+
+        # ← Insert your wait here:
+        page.wait_for_selector("video[src]", timeout=15000)
+
+        # Now that the video element is present, grab its src
+        video_src = page.eval_on_selector("video", "el => el.src")
+
         browser.close()
-        print(f"[playwright] extracted src: {src}")
-        return src
+        return video_src
 
 
 def download_video(url, output_path):
